@@ -60,6 +60,7 @@ const vimeo = {
             transparent: 0,
             gesture: 'media',
             playsinline: !this.config.fullscreen.iosNative,
+            quality: player.config.quality.default,
         };
         const params = utils.buildUrlParams(options);
 
