@@ -465,7 +465,10 @@ const youtube = {
                             }
 
                             // Get quality
-                            controls.setQualityMenu.call(player, mapQualityUnits(instance.getAvailableQualityLevels()));
+
+                            // Disable quality controls on youtube due to bugs and lack of support
+                            // https://github.com/sampotts/plyr/issues/1149#issuecomment-412530577
+                            // controls.setQualityMenu.call(player, mapQualityUnits(instance.getAvailableQualityLevels()));
 
                             break;
 
