@@ -116,6 +116,7 @@ const defaults = {
     captions: {
         active: false,
         language: (navigator.language || navigator.userLanguage).split('-')[0],
+        fallbackLanguage: 'en'
     },
 
     // Fullscreen settings
