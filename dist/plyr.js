@@ -116,7 +116,8 @@
         // Captions settings
         captions: {
             active: false,
-            language: (navigator.language || navigator.userLanguage).split('-')[0]
+            language: (navigator.language || navigator.userLanguage).split('-')[0],
+            fallbackLanguage: 'en'
         },
 
         // Fullscreen settings
@@ -336,7 +337,7 @@
         }
     };
 
-    var commonjsGlobal = typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : typeof self !== 'undefined' ? self : {};
+    var commonjsGlobal = typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : typeof self !== 'undefined' ? self : {};
 
     function createCommonjsModule(fn, module) {
     	return module = { exports: {} }, fn(module, module.exports), module.exports;
@@ -344,9 +345,7 @@
 
     var loadjs_umd = createCommonjsModule(function (module, exports) {
     (function(root, factory) {
-      if (typeof undefined === 'function' && undefined.amd) {
-        undefined([], factory);
-      } else {
+      {
         module.exports = factory();
       }
     }(commonjsGlobal, function() {
@@ -455,18 +454,26 @@
           maxTries = (args.numRetries || 0) + 1,
           beforeCallbackFn = args.before || devnull,
           pathStripped = path.replace(/^(css|img)!/, ''),
-          isCss,
+          isLegacyIECss,
           e;
 
       numTries = numTries || 0;
 
       if (/(^css!|\.css$)/.test(path)) {
-        isCss = true;
-
         // css
         e = doc.createElement('link');
         e.rel = 'stylesheet';
-        e.href = pathStripped; //.replace(/^css!/, '');  // remove "css!" prefix
+        e.href = pathStripped;
+
+        // tag IE9+
+        isLegacyIECss = 'hideFocus' in e;
+
+        // use preload in IE Edge (to detect load errors)
+        if (isLegacyIECss && e.relList) {
+          isLegacyIECss = 0;
+          e.rel = 'preload';
+          e.as = 'style';
+        }
       } else if (/(^img!|\.(png|gif|jpg|svg)$)/.test(path)) {
         // image
         e = doc.createElement('img');
@@ -481,15 +488,15 @@
       e.onload = e.onerror = e.onbeforeload = function (ev) {
         var result = ev.type[0];
 
-        // Note: The following code isolates IE using `hideFocus` and treats empty
-        // stylesheets as failures to get around lack of onerror support
-        if (isCss && 'hideFocus' in e) {
+        // treat empty stylesheets as failures to get around lack of onerror
+        // support in IE9-11
+        if (isLegacyIECss) {
           try {
             if (!e.sheet.cssText.length) result = 'e';
           } catch (x) {
             // sheets objects created from load errors don't allow access to
-            // `cssText`
-            result = 'e';
+            // `cssText` (unless error is Code:18 SecurityError)
+            if (x.code != 18) result = 'e';
           }
         }
 
@@ -502,8 +509,11 @@
           if (numTries < maxTries) {
             return loadFile(path, callbackFn, args, numTries);
           }
+        } else if (e.rel == 'preload' && e.as == 'style') {
+          // activate preloaded stylesheets
+          return e.rel = 'stylesheet'; // jshint ignore:line
         }
-
+        
         // execute callback
         callbackFn(path, result, ev.defaultPrevented);
       };
@@ -552,9 +562,11 @@
     /**
      * Initiate script load and register bundle.
      * @param {(string|string[])} paths - The file paths
-     * @param {(string|Function)} [arg1] - The bundleId or success callback
-     * @param {Function} [arg2] - The success or error callback
-     * @param {Function} [arg3] - The error callback
+     * @param {(string|Function|Object)} [arg1] - The (1) bundleId or (2) success
+     *   callback or (3) object literal with success/error arguments, numRetries,
+     *   etc.
+     * @param {(Function|Object)} [arg2] - The (1) success callback or (2) object
+     *   literal with success/error arguments, numRetries, etc.
      */
     function loadjs(paths, arg1, arg2) {
       var bundleId,
@@ -575,14 +587,23 @@
         }
       }
 
-      // load scripts
-      loadFiles(paths, function (pathsNotFound) {
-        // execute callbacks
-        executeCallbacks(args, pathsNotFound);
+      function loadFn(resolve, reject) {
+        loadFiles(paths, function (pathsNotFound) {
+          // execute callbacks
+          executeCallbacks(args, pathsNotFound);
+          
+          // resolve Promise
+          if (resolve) {
+            executeCallbacks({success: resolve, error: reject}, pathsNotFound);
+          }
 
-        // publish bundle load event
-        publish(bundleId, pathsNotFound);
-      }, args);
+          // publish bundle load event
+          publish(bundleId, pathsNotFound);
+        }, args);
+      }
+      
+      if (args.returnPromise) return new Promise(loadFn);
+      else loadFn();
     }
 
 
@@ -1137,13 +1158,12 @@
 
         // Element matches selector
         matches: function matches(element, selector) {
-            var prototype = { Element: Element };
 
             function match() {
                 return Array.from(document.querySelectorAll(selector)).includes(this);
             }
 
-            var matches = prototype.matches || prototype.webkitMatchesSelector || prototype.mozMatchesSelector || prototype.msMatchesSelector || match;
+            var matches = match;
 
             return matches.call(element, selector);
         },
@@ -2169,6 +2189,9 @@
                 return;
             }
 
+            // Get tracks
+            var tracks = captions.getTracks.call(this);
+
             // Set default language if not set
             var stored = this.storage.get('language');
 
@@ -2178,6 +2201,18 @@
 
             if (utils.is.empty(this.captions.language)) {
                 this.captions.language = this.config.captions.language.toLowerCase();
+            }
+
+            // if desired language is not available,
+            // check availability of fallbackLanguage ('en'),
+            // and if not available too, take the first existing language
+            if (!utils.is.empty(tracks)) {
+                var trackLanguages = tracks.map(function (track) {
+                    return track.language;
+                });
+
+                // eslint-disable-next-line no-nested-ternary
+                this.captions.language = trackLanguages.includes(this.captions.language) ? this.captions.language : trackLanguages.includes(defaults.captions.fallbackLanguage) ? defaults.captions.fallbackLanguage : trackLanguages[0];
             }
 
             // Set captions enabled state if not set
@@ -2209,10 +2244,7 @@
             }
 
             // Set the class hook
-            utils.toggleClass(this.elements.container, this.config.classNames.captions.enabled, !utils.is.empty(captions.getTracks.call(this)));
-
-            // Get tracks
-            var tracks = captions.getTracks.call(this);
+            utils.toggleClass(this.elements.container, this.config.classNames.captions.enabled, !utils.is.empty(tracks));
 
             // If no caption file exists, hide container for caption text
             if (utils.is.empty(tracks)) {
@@ -2281,7 +2313,7 @@
                         captions.setCue.call(this, currentTrack);
                     }
                 }
-            } else if (this.isVimeo && this.captions.active) {
+            } else if (this.isVimeo) {
                 this.embed.enableTextTrack(this.language);
             }
         },
@@ -3902,36 +3934,6 @@
                 container.appendChild(controls.createTime.call(this, 'duration'));
             }
 
-            // Toggle mute button
-            if (this.config.controls.includes('mute')) {
-                container.appendChild(controls.createButton.call(this, 'mute'));
-            }
-
-            // Volume range control
-            if (this.config.controls.includes('volume')) {
-                var volume = utils.createElement('div', {
-                    class: 'plyr__volume'
-                });
-
-                // Set the attributes
-                var attributes = {
-                    max: 1,
-                    step: 0.05,
-                    value: this.config.volume
-                };
-
-                // Create the volume range slider
-                var range = controls.createRange.call(this, 'volume', utils.extend(attributes, {
-                    id: 'plyr-volume-' + data.id
-                }));
-                volume.appendChild(range.label);
-                volume.appendChild(range.input);
-
-                this.elements.volume = volume;
-
-                container.appendChild(volume);
-            }
-
             // Toggle captions button
             if (this.config.controls.includes('captions')) {
                 container.appendChild(controls.createButton.call(this, 'captions'));
@@ -4052,6 +4054,36 @@
             // Airplay button
             if (this.config.controls.includes('airplay') && support.airplay) {
                 container.appendChild(controls.createButton.call(this, 'airplay'));
+            }
+
+            // Toggle mute button
+            if (this.config.controls.includes('mute')) {
+                container.appendChild(controls.createButton.call(this, 'mute'));
+            }
+
+            // Volume range control
+            if (this.config.controls.includes('volume')) {
+                var volume = utils.createElement('div', {
+                    class: 'plyr__volume'
+                });
+
+                // Set the attributes
+                var attributes = {
+                    max: 1,
+                    step: 0.05,
+                    value: this.config.volume
+                };
+
+                // Create the volume range slider
+                var range = controls.createRange.call(this, 'volume', utils.extend(attributes, {
+                    id: 'plyr-volume-' + data.id
+                }));
+                volume.appendChild(range.label);
+                volume.appendChild(range.input);
+
+                this.elements.volume = volume;
+
+                container.appendChild(volume);
             }
 
             // Toggle fullscreen button

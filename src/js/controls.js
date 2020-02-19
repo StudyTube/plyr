@@ -1011,40 +1011,6 @@ const controls = {
             container.appendChild(controls.createTime.call(this, 'duration'));
         }
 
-        // Toggle mute button
-        if (this.config.controls.includes('mute')) {
-            container.appendChild(controls.createButton.call(this, 'mute'));
-        }
-
-        // Volume range control
-        if (this.config.controls.includes('volume')) {
-            const volume = utils.createElement('div', {
-                class: 'plyr__volume',
-            });
-
-            // Set the attributes
-            const attributes = {
-                max: 1,
-                step: 0.05,
-                value: this.config.volume,
-            };
-
-            // Create the volume range slider
-            const range = controls.createRange.call(
-                this,
-                'volume',
-                utils.extend(attributes, {
-                    id: `plyr-volume-${data.id}`,
-                }),
-            );
-            volume.appendChild(range.label);
-            volume.appendChild(range.input);
-
-            this.elements.volume = volume;
-
-            container.appendChild(volume);
-        }
-
         // Toggle captions button
         if (this.config.controls.includes('captions')) {
             container.appendChild(controls.createButton.call(this, 'captions'));
@@ -1175,6 +1141,40 @@ const controls = {
         // Airplay button
         if (this.config.controls.includes('airplay') && support.airplay) {
             container.appendChild(controls.createButton.call(this, 'airplay'));
+        }
+
+        // Toggle mute button
+        if (this.config.controls.includes('mute')) {
+            container.appendChild(controls.createButton.call(this, 'mute'));
+        }
+
+        // Volume range control
+        if (this.config.controls.includes('volume')) {
+            const volume = utils.createElement('div', {
+                class: 'plyr__volume',
+            });
+
+            // Set the attributes
+            const attributes = {
+                max: 1,
+                step: 0.05,
+                value: this.config.volume,
+            };
+
+            // Create the volume range slider
+            const range = controls.createRange.call(
+                this,
+                'volume',
+                utils.extend(attributes, {
+                    id: `plyr-volume-${data.id}`,
+                }),
+            );
+            volume.appendChild(range.label);
+            volume.appendChild(range.input);
+
+            this.elements.volume = volume;
+
+            container.appendChild(volume);
         }
 
         // Toggle fullscreen button

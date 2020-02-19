@@ -7,6 +7,7 @@ import support from './support';
 import utils from './utils';
 import controls from './controls';
 import i18n from './i18n';
+import defaults from './defaults';
 
 const captions = {
     // Setup captions
@@ -15,6 +16,9 @@ const captions = {
         if (!this.supported.ui) {
             return;
         }
+
+        // Get tracks
+        const tracks = captions.getTracks.call(this);
 
         // Set default language if not set
         const stored = this.storage.get('language');
@@ -25,6 +29,20 @@ const captions = {
 
         if (utils.is.empty(this.captions.language)) {
             this.captions.language = this.config.captions.language.toLowerCase();
+        }
+
+        // if desired language is not available,
+        // check availability of fallbackLanguage ('en'),
+        // and if not available too, take the first existing language
+        if (!utils.is.empty(tracks)) {
+            const trackLanguages = tracks.map(track => track.language);
+
+            // eslint-disable-next-line no-nested-ternary
+            this.captions.language = trackLanguages.includes(this.captions.language)
+                ? this.captions.language
+                : trackLanguages.includes(defaults.captions.fallbackLanguage)
+                    ? defaults.captions.fallbackLanguage
+                    : trackLanguages[0];
         }
 
         // Set captions enabled state if not set
@@ -56,10 +74,7 @@ const captions = {
         }
 
         // Set the class hook
-        utils.toggleClass(this.elements.container, this.config.classNames.captions.enabled, !utils.is.empty(captions.getTracks.call(this)));
-
-        // Get tracks
-        const tracks = captions.getTracks.call(this);
+        utils.toggleClass(this.elements.container, this.config.classNames.captions.enabled, !utils.is.empty(tracks));
 
         // If no caption file exists, hide container for caption text
         if (utils.is.empty(tracks)) {
@@ -129,7 +144,7 @@ const captions = {
                     captions.setCue.call(this, currentTrack);
                 }
             }
-        } else if (this.isVimeo && this.captions.active) {
+        } else if (this.isVimeo) {
             this.embed.enableTextTrack(this.language);
         }
     },
